@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "a7QQiJ7W813wXj74XBvEzz5NcNUhaaeFKraaNK14fEQ=",
+  "Source": "SignalR-Test",
+  "BasePath": "_content/SignalR-Test",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}
