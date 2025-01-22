@@ -1,24 +1,33 @@
-using SignalR_Test;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// SignalR ve HttpClient hizmetlerini ekleyin
+// SignalR ve Redis baðlantýsý ekleniyor
 builder.Services.AddSignalR();
-builder.Services.AddHttpClient();
-builder.Services.AddSingleton<ICodeService, CodeService>();
+
+// Redis baðlantýsýný tanýmla
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    return ConnectionMultiplexer.Connect("localhost:6379");
+});
+
+// Redis veritabanýný SignalR Hub'da kullanmak üzere ekle
+builder.Services.AddScoped(sp =>
+{
+    var multiplexer = sp.GetRequiredService<IConnectionMultiplexer>();
+    return multiplexer.GetDatabase();
+});
 
 var app = builder.Build();
 
+// SignalR endpoint'i tanýmlanýyor
 app.UseRouting();
+
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapHub<CodeCheckerHub>("/codeCheckerHub");
 });
-
-// Kod üretimini tetikleyin
-using var scope = app.Services.CreateScope();
-var codeService = scope.ServiceProvider.GetRequiredService<ICodeService>();
-var generatedCode = await codeService.GenerateAndStoreCode();
-Console.WriteLine($"Generated Code: {generatedCode}");
 
 app.Run();

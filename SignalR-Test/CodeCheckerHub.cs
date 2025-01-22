@@ -1,80 +1,118 @@
 ﻿using Microsoft.AspNetCore.SignalR;
-using SignalR_Test;
-using System.Net.Http;
-using System.Net.Http.Json;
+using StackExchange.Redis;
+using System;
+using System.Text;
 using System.Threading.Tasks;
 
 public class CodeCheckerHub : Hub
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private static string GeneratedCode;
+    private readonly IDatabase _redisCache;
 
-    public CodeCheckerHub(IHttpClientFactory httpClientFactory)
+    public CodeCheckerHub(IDatabase redisCache)
     {
-        _httpClientFactory = httpClientFactory;
+        _redisCache = redisCache;
     }
 
-    // Kod üret ve sakla
+    // Kod üretimi ve Redis'e kaydetme
     public async Task GenerateAndStoreCode()
     {
-        var httpClient = _httpClientFactory.CreateClient();
+        Random random = new Random();
+        string generatedCode = random.Next(100000, 999999).ToString();
 
-        try
+        if (await _redisCache.KeyExistsAsync(generatedCode))
         {
-            var response = await httpClient.GetAsync("https://api.pakodemy.com/api/account/getlogincode");
-            string responseContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Generated Code API Response: {responseContent}");
-
-            if (response.IsSuccessStatusCode)
-            {
-                var result = await response.Content.ReadFromJsonAsync<CodeGenerateResponse>();
-
-                if (result != null && result.ResponseData != null)
-                {
-                    GeneratedCode = result.ResponseData.Code.ToString();
-                    Console.WriteLine($"Generated Code: {GeneratedCode}");
-                }
-            }
+            await Clients.Caller.SendAsync("Error", "Code generation failed. Try again.");
+            return;
         }
-        catch (Exception ex)
+
+        const int keyExpiryTime = 65;
+        await _redisCache.StringSetAsync(generatedCode, string.Empty, TimeSpan.FromSeconds(keyExpiryTime));
+
+        Console.WriteLine($"Generated Code: {generatedCode}");
+        await Clients.Caller.SendAsync("CodeGenerated", new
         {
-            Console.WriteLine($"Error during code generation: {ex.Message}");
-        }
+            Code = generatedCode,
+            ExpireTime = keyExpiryTime - 5
+        });
     }
 
-    // Konsoldan gelen sinyale göre CheckLogin API'sini çalıştır
+    // Kod doğrulama
     public async Task CheckLogin(string code)
     {
-
-        var httpClient = _httpClientFactory.CreateClient();
-        var request = new
+        if (string.IsNullOrEmpty(code))
         {
-            Code = int.Parse(code),
-            OSType = 1,
-            DeviceType = 1,
-            DeviceId = "baran"
-        };
-
-        try
-        {
-            var response = await httpClient.PostAsJsonAsync("https://api.pakodemy.com/api/account/checklogincode", request);
-            string responseContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"CheckLogin API Response: {responseContent}");
-
-            if (response.IsSuccessStatusCode)
-            {
-                await Clients.Caller.SendAsync("CodeValidated", "Success");
-                Console.WriteLine("Code validated successfully.");
-            }
-            else
-            {
-                await Clients.Caller.SendAsync("CodeValidated", "Failed");
-                Console.WriteLine("Code validation failed.");
-            }
+            await Clients.Caller.SendAsync("Error", "Invalid code.");
+            return;
         }
-        catch (Exception ex)
+
+        string redisValue = await _redisCache.StringGetAsync(code);
+
+        if (string.IsNullOrEmpty(redisValue))
         {
-            Console.WriteLine($"Error during CheckLogin API call: {ex.Message}");
+            await Clients.Caller.SendAsync("CodeValidated", new
+            {
+                Status = "Failed",
+                Message = "Code not found or expired."
+            });
+            return;
         }
+
+        // Token çözümleme işlemi
+        string token = Encoding.ASCII.GetString(Convert.FromBase64String(redisValue));
+
+        // Redis'ten kodu sil
+        await _redisCache.KeyDeleteAsync(code);
+
+        // Başarılı giriş bilgilerini istemciye gönder
+        await Clients.Caller.SendAsync("CodeValidated", new
+        {
+            Status = "Success",
+            Code = code,
+            Token = token
+        });
+
+        Console.WriteLine($"Code {code} validated successfully with token {token}.");
+    }
+
+
+    // Kod ve token eşleme
+    public async Task WebCodeLogin(string code, string userToken)
+    {
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(userToken))
+        {
+            await Clients.Caller.SendAsync("Error", "Invalid input.");
+            return;
+        }
+
+        if (!await _redisCache.KeyExistsAsync(code))
+        {
+            await Clients.Caller.SendAsync("Error", "Code not found.");
+            return;
+        }
+
+        string hashedUserToken = Convert.ToBase64String(Encoding.ASCII.GetBytes(userToken));
+        const int keyExpiryTime = 65;
+        await _redisCache.StringSetAsync(code, hashedUserToken, TimeSpan.FromSeconds(keyExpiryTime));
+
+        await Clients.Caller.SendAsync("LoginSuccess", "Code and token mapped successfully.");
+    }
+
+    // Kod silme
+    public async Task ClearStoredCode(string code)
+    {
+        if (string.IsNullOrEmpty(code))
+        {
+            await Clients.Caller.SendAsync("Error", "Invalid code.");
+            return;
+        }
+
+        if (!await _redisCache.KeyExistsAsync(code))
+        {
+            await Clients.Caller.SendAsync("Error", "Code not found.");
+            return;
+        }
+
+        await _redisCache.KeyDeleteAsync(code);
+        await Clients.Caller.SendAsync("CodeCleared", "Code deleted successfully.");
     }
 }

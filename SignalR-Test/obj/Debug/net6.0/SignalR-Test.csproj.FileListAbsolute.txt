@@ -46,3 +46,6 @@ D:\SignalR-Test\SignalR-Test\obj\Debug\net6.0\refint\SignalR-Test.dll
 D:\SignalR-Test\SignalR-Test\obj\Debug\net6.0\SignalR-Test.pdb
 D:\SignalR-Test\SignalR-Test\obj\Debug\net6.0\SignalR-Test.genruntimeconfig.cache
 D:\SignalR-Test\SignalR-Test\obj\Debug\net6.0\ref\SignalR-Test.dll
+D:\SignalR-Test\SignalR-Test\bin\Debug\net6.0\Pipelines.Sockets.Unofficial.dll
+D:\SignalR-Test\SignalR-Test\bin\Debug\net6.0\StackExchange.Redis.dll
+D:\SignalR-Test\SignalR-Test\obj\Debug\net6.0\SignalR-Test.sourcelink.json
